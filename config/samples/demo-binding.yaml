@@ -1,0 +1,19 @@
+apiVersion: sanorg.in/v1
+kind: CertificateBinding
+metadata:
+  name: demo-binding
+  namespace: cert-auto-demo
+spec:
+  certificate:
+    dnsNames: ["test.example.com"]
+    issuerRef:
+      name: selfsigned-issuer
+      kind: ClusterIssuer
+    commonName: "test.example.com"
+  
+  destinationRules:
+    - name: reflector-to-frontend
+      type: Kubernetes
+      config:
+        targetNamespace: app-frontend
+        targetSecretName: site-tls

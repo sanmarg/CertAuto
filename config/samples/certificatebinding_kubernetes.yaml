@@ -1,0 +1,39 @@
+# Example: Reflect wildcard certificate to multiple namespaces
+apiVersion: sanorg.in/v1
+kind: CertificateBinding
+metadata:
+  name: wildcard-cert-binding
+  namespace: cert-manager
+spec:
+  # Source: The TLS secret created by cert-manager
+  sourceSecretRef:
+    name: wildcard-example-com-tls
+    namespace: cert-manager
+  
+  # Destinations: Where to sync the certificate
+  destinationRules:
+    # Reflect to app-frontend namespace
+    - name: frontend-ns
+      type: Kubernetes
+      config:
+        targetNamespace: app-frontend
+        targetSecretName: tls-secret
+    
+    # Reflect to app-backend namespace
+    - name: backend-ns
+      type: Kubernetes
+      config:
+        targetNamespace: app-backend
+        targetSecretName: tls-secret
+    
+    # Reflect to app-api namespace  
+    - name: api-ns
+      type: Kubernetes
+      config:
+        targetNamespace: app-api
+        targetSecretName: api-tls-secret
+  
+  # Sync policy
+  syncPolicy:
+    maxRetries: 5
+    retryInterval: "1m"

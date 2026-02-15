@@ -1,0 +1,27 @@
+# Example: Sync certificate to Azure Key Vault
+apiVersion: sanorg.in/v1
+kind: CertificateBinding
+metadata:
+  name: azure-keyvault-binding
+  namespace: cert-manager
+spec:
+  sourceSecretRef:
+    name: api-example-com-tls
+    namespace: cert-manager
+  
+  destinationRules:
+    - name: azure-keyvault-prod
+      type: AzureKeyVault
+      config:
+        keyVaultName: my-keyvault-prod
+        certificateName: api-example-com
+    
+    - name: azure-keyvault-staging
+      type: AzureKeyVault
+      config:
+        keyVaultName: my-keyvault-staging
+        certificateName: api-example-com
+  
+  syncPolicy:
+    maxRetries: 3
+    retryInterval: "5m"

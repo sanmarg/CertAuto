@@ -1,0 +1,41 @@
+# Example: Multi-destination binding (Kubernetes + Cloud)
+apiVersion: sanorg.in/v1
+kind: CertificateBinding
+metadata:
+  name: multi-destination-binding
+  namespace: cert-manager
+spec:
+  sourceSecretRef:
+    name: wildcard-example-com-tls
+    namespace: cert-manager
+  
+  destinationRules:
+    # Kubernetes namespace reflections
+    - name: production-ns
+      type: Kubernetes
+      config:
+        targetNamespace: production
+        targetSecretName: tls-wildcard
+    
+    - name: staging-ns
+      type: Kubernetes
+      config:
+        targetNamespace: staging
+        targetSecretName: tls-wildcard
+    
+    # Azure Key Vault
+    - name: azure-keyvault
+      type: AzureKeyVault
+      config:
+        keyVaultName: company-keyvault
+        certificateName: wildcard-example-com
+    
+    # AWS ACM
+    - name: aws-acm
+      type: AWSACM
+      config:
+        region: us-east-1
+  
+  syncPolicy:
+    maxRetries: 5
+    retryInterval: "2m"

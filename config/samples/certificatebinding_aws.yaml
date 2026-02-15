@@ -1,0 +1,28 @@
+# Example: Sync certificate to AWS ACM
+apiVersion: sanorg.in/v1
+kind: CertificateBinding
+metadata:
+  name: aws-acm-binding
+  namespace: cert-manager
+spec:
+  sourceSecretRef:
+    name: webapp-example-com-tls
+    namespace: cert-manager
+  
+  destinationRules:
+    - name: aws-acm-us-east-1
+      type: AWSACM
+      config:
+        region: us-east-1
+        # Leave empty to create new, or specify ARN to update existing
+        certificateArn: ""
+    
+    - name: aws-acm-eu-west-1
+      type: AWSACM
+      config:
+        region: eu-west-1
+        certificateArn: "arn:aws:acm:eu-west-1:123456789:certificate/abc-123"
+  
+  syncPolicy:
+    maxRetries: 3
+    retryInterval: "5m"
