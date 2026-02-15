@@ -50,7 +50,8 @@ collections:
     permalink: /docs/:path/
 
 # Site analytics (optional - configure with your tracking ID)
-google_analytics: ''
+# Get your ID from: https://analytics.google.com
+google_analytics: 'G-N86DCZT0GG'
 
 # SEO settings
 lang: en-US
