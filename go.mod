@@ -1,4 +1,4 @@
-module github.com/sanmargp/certauto
+module github.com/sanmarg/certauto
 
 go 1.25.0
 

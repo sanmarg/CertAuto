@@ -24,9 +24,9 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
-	certautov1 "github.com/sanmargp/certauto/api/v1"
-	custommetrics "github.com/sanmargp/certauto/controllers/metrics"
-	"github.com/sanmargp/certauto/controllers/plugins"
+	certautov1 "github.com/sanmarg/certauto/api/v1"
+	custommetrics "github.com/sanmarg/certauto/controllers/metrics"
+	"github.com/sanmarg/certauto/controllers/plugins"
 )
 
 // CertificateBindingReconciler reconciles CertificateBinding objects

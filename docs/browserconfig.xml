@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<browserconfig>
+    <msapplication>
+        <tile>
+            <square70x70logo src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 70'><rect width='70' height='70' fill='%236366f1'/><text y='52' font-size='50' fill='white' text-anchor='middle' x='35'>🔒</text></svg>" />
+            <square150x150logo src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 150 150'><rect width='150' height='150' fill='%236366f1'/><text y='115' font-size='90' fill='white' text-anchor='middle' x='75'>🔒</text></svg>" />
+            <wide310x150logo src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 310 150'><rect width='310' height='150' fill='%236366f1'/><text y='115' font-size='90' fill='white' text-anchor='middle' x='155'>🔒 CertAuto</text></svg>" />
+            <square310x310logo src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 310 310'><rect width='310' height='310' fill='%236366f1'/><text y='235' font-size='150' fill='white' text-anchor='middle' x='155'>🔒</text></svg>" />
+            <TileColor>#6366f1</TileColor>
+        </tile>
+        <notification>
+            <polling-uri src="http://contoso.com/bg.xml" />
+            <period>720</period>
+            <recycleday>0</recycleday>
+        </notification>
+    </msapplication>
+</browserconfig>

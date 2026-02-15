@@ -1,0 +1,29 @@
+# robots.txt for CertAuto Website
+# Allows search engines to index the site
+
+User-agent: *
+Allow: /
+Allow: /certauto/
+Disallow: /admin/
+Disallow: /.git/
+Disallow: /node_modules/
+
+# Sitemap
+Sitemap: https://sanmarg.github.io/certauto/sitemap.xml
+
+# Crawl delay (in seconds)
+Crawl-delay: 1
+
+# Allow specific bots
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: slurp
+Allow: /
+
+# Prevent social media crawlers from accessing unnecessarily
+User-agent: facebookexternalhit
+Allow: /

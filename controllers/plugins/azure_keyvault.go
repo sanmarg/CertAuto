@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	certautov1 "github.com/sanmargp/certauto/api/v1"
+	certautov1 "github.com/sanmarg/certauto/api/v1"
 )
 
 // AzureKeyVaultPlugin syncs certificates to Azure Key Vault.

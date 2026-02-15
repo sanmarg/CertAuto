@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+    <ShortName>CertAuto</ShortName>
+    <Description>Search CertAuto documentation and features</Description>
+    <Url type="text/html" template="https://github.com/sanmarg/CertAuto/search?q={searchTerms}"/>
+    <Url type="application/opensearchdescription+xml" rel="self" template="https://sanmarg.github.io/certauto/opensearch.xml"/>
+    <Image height="16" width="16" type="image/x-icon">data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%236366f1'/><text y='12' font-size='14' fill='white' text-anchor='middle' x='8'>🔒</text></svg></Image>
+    <Contact>ssp.paranjpe@gmail.com</Contact>
+    <Tags>kubernetes certificate management automation</Tags>
+    <LongName>CertAuto - Kubernetes Certificate Management Operator</LongName>
+    <Developer>Sanmarg Paranjpe</Developer>
+    <Attribution>CertAuto - Open Source Project</Attribution>
+    <SyndicationRight>open</SyndicationRight>
+    <AdultContent>false</AdultContent>
+    <Language>en-us</Language>
+    <OutputEncoding>UTF-8</OutputEncoding>
+    <InputEncoding>UTF-8</InputEncoding>
+</OpenSearchDescription>

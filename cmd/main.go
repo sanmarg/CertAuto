@@ -26,8 +26,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
-	v1 "github.com/sanmargp/certauto/api/v1"
-	"github.com/sanmargp/certauto/controllers"
+	v1 "github.com/sanmarg/certauto/api/v1"
+	"github.com/sanmarg/certauto/controllers"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"

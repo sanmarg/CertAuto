@@ -1,0 +1,126 @@
+# CertAuto - Apache Server Configuration
+# This file is optional and used if the site is hosted on a traditional Apache server
+# GitHub Pages doesn't use this, but it's provided for completeness
+
+<IfModule mod_rewrite.c>
+    # Enable rewrite engine
+    RewriteEngine On
+    
+    # Remove www prefix
+    RewriteCond %{HTTP_HOST} ^www\.
+    RewriteRule ^(.*)$ http://%{HTTP_HOST:www.}$1 [R=301,L]
+    
+    # Redirect to HTTPS
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+    
+    # Remove trailing slash except for directories
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.+)/$ /$1 [R=301,L]
+    
+    # Serve clean URLs
+    RewriteBase /certauto/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.html [QSA,L]
+</IfModule>
+
+# Compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+    AddOutputFilterByType DEFLATE text/x-js text/x-component text/x-cross-domain-policy
+</IfModule>
+
+# Browser Caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # Default
+    ExpiresDefault "access plus 1 month"
+    
+    # HTML
+    ExpiresByType text/html "access plus 1 day"
+    
+    # CSS and JavaScript
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType text/javascript "access plus 1 year"
+    
+    # Images
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+    
+    # Fonts
+    ExpiresByType font/ttf "access plus 1 year"
+    ExpiresByType font/otf "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+    
+    # Manifest
+    ExpiresByType application/manifest+json "access plus 1 day"
+</IfModule>
+
+# ETags
+FileETag MTime Size
+
+# Set Headers
+<IfModule mod_headers.c>
+    # Remove server signature
+    Header always unset Server
+    Header always unset X-Powered-By
+    
+    # Security headers
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # CORS for fonts
+    <FilesMatch "\.(ttf|ttc|otf|eot|woff|woff2|font\.css)$">
+        Header set Access-Control-Allow-Origin "*"
+    </FilesMatch>
+    
+    # Cache control
+    <FilesMatch "\.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|otf)$">
+        Header set Cache-Control "max-age=31536000, public"
+    </FilesMatch>
+    
+    <FilesMatch "\.html$">
+        Header set Cache-Control "max-age=86400, public"
+    </FilesMatch>
+    
+    <FilesMatch "index\.html$">
+        Header set Cache-Control "max-age=3600, public"
+    </FilesMatch>
+</IfModule>
+
+# Remove access to specific files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect sensitive files
+<FilesMatch "^\.(env|htaccess|htpasswd)" >
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block access to directories
+<FilesMatch "^[\.\#].*$|^(.*?)\.php(.*?)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Performance Optimizations
+<IfModule mod_mime.c>
+    AddType application/javascript js
+    AddType text/css css
+    AddEncoding gzip svgz
+    AddType image/svg+xml svg svgz
+</IfModule>

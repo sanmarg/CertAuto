@@ -7,5 +7,5 @@ domain: sanorg.in
 layout:
 - go.kubebuilder.io/v4
 projectName: certificateautorenewal
-repo: github.com/sanmargp/certauto
+repo: github.com/sanmarg/certauto
 version: "3"

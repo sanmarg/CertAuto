@@ -1,0 +1,75 @@
+# GitHub Pages Configuration for CertAuto
+
+# Site settings
+title: CertAuto
+description: >-
+  Production-ready Kubernetes operator for automated certificate lifecycle management.
+  Seamlessly sync certificates across Azure Key Vault, AWS ACM, and Kubernetes namespaces.
+
+url: https://sanmarg.github.io
+baseurl: /certauto
+
+# Social settings
+twitter:
+  username: sanmarg
+github:
+  username: sanmarg
+
+# Markdown processor
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  parse_block_html: true
+
+# Build settings
+theme: jekyll-theme-minimal
+
+# Exclude files and folders
+exclude:
+  - .jekyll-cache/
+  - .sass-cache/
+  - _sass/
+  - node_modules/
+  - Gemfile
+  - Gemfile.lock
+  - '*.gemspec'
+
+# Include files
+include:
+  - .gitignore
+  - _redirects
+
+# Permalink structure
+permalink: /blog/:year/:month/:day/:title/
+
+# Collections
+collections:
+  docs:
+    output: true
+    permalink: /docs/:path/
+
+# Site analytics (optional - configure with your tracking ID)
+google_analytics: ''
+
+# SEO settings
+lang: en-US
+timezone: UTC
+copyright: 'Copyright © 2025 CertAuto. All rights reserved.'
+
+# Build settings
+plugins:
+  - jekyll-sitemap
+  - jekyll-seo-tag
+  - jekyll-feed
+
+# Compression
+compress_html:
+  clippings: all
+  comments: all
+  endings: all
+  startings: []
+  blanklines: false
+  profile: false
+  ignore:
+    envs: development
