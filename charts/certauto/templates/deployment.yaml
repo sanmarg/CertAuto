@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "certauto.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+    control-plane: controller-manager
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "certauto.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "certauto.selectorLabels" . | nindent 8 }}
+        control-plane: controller-manager
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "certauto.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: manager
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --health-probe-bind-address=:8081
+            {{- if .Values.metrics.enabled }}
+            - --metrics-bind-address=:{{ .Values.metrics.bindPort }}
+            {{- if not .Values.metrics.secure }}
+            - --metrics-secure=false
+            {{- end }}
+            {{- else }}
+            - --metrics-bind-address=0
+            {{- end }}
+            {{- if .Values.leaderElection.enabled }}
+            - --leader-elect
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if .Values.cloud.aws.region }}
+            - name: AWS_REGION
+              value: {{ .Values.cloud.aws.region | quote }}
+            {{- end }}
+            {{- if .Values.cloud.azure.existingSecret }}
+            - name: AZURE_TENANT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloud.azure.existingSecret }}
+                  key: tenantId
+                  optional: true
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloud.azure.existingSecret }}
+                  key: clientId
+                  optional: true
+            - name: AZURE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloud.azure.existingSecret }}
+                  key: clientSecret
+                  optional: true
+            {{- end }}
+          ports:
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.bindPort }}
+              protocol: TCP
+            {{- end }}
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

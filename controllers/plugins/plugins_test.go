@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"bytes"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -41,5 +42,28 @@ func TestGenerateCertName(t *testing.T) {
 				t.Errorf("generateCertName() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCombinedPEMDoesNotMutateCertBytes(t *testing.T) {
+	// Give the certificate slice spare capacity: append(cert, key...) would
+	// write into that capacity and corrupt the source secret's backing array.
+	certBytes := make([]byte, 4, 32)
+	copy(certBytes, []byte("cert"))
+	keyBytes := []byte("key")
+
+	combined := combinedPEM(certBytes, keyBytes)
+
+	if !bytes.Equal(certBytes, []byte("cert")) {
+		t.Fatalf("source certificate bytes were mutated: %q", certBytes)
+	}
+	spare := certBytes[:cap(certBytes)]
+	for i := len(certBytes); i < len(spare); i++ {
+		if spare[i] != 0 {
+			t.Fatalf("append wrote into the source slice's spare capacity at %d", i)
+		}
+	}
+	if !bytes.Equal(combined, []byte("cert\nkey")) {
+		t.Fatalf("unexpected combined PEM: %q", combined)
 	}
 }

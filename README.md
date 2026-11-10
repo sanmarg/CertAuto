@@ -1,215 +1,260 @@
-<p align="center">
-  <img src="docs/assets/logo.png" width="200" alt="CertAuto Logo">
-</p>
-
-# CertAuto — Certificate Auto-Renewal & Distribution Controller
+# CertAuto: Certificate Auto-Renewal & Distribution Controller
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.24+-blue.svg)](https://kubernetes.io)
 
-CertAuto is a Kubernetes controller that automates TLS certificate renewal and distribution. It integrates with cert-manager to create/manage Certificates and syncs resulting TLS secrets to configured destinations (Kubernetes namespaces, Azure Key Vault, AWS ACM).
+CertAuto is a Kubernetes controller that distributes TLS certificates. It works
+with cert-manager, which issues and renews certificates, and copies the resulting
+TLS secret to the places that need it: other namespaces, AWS ACM, or Azure Key
+Vault.
 
-This README is written for production operators and contributors — it covers architecture, deployment, configuration, development workflow, and security considerations.
+One custom resource declares what the certificate is and where it has to exist.
+The controller reconciles the difference.
 
-## Table of Contents
+## How it works
 
-- Overview
-- Architecture (diagram)
-- Installation (Helm)
-- Configuration
-- Usage & Examples
-- Observability & Metrics
-- Security & Secrets
-- Development: build, test, codegen, lint
-- CI / Release notes
-- Contributing
-- Troubleshooting
-- License
-
-## Overview
-
-CertAuto watches a custom resource `CertificateBinding` (group `sanorg.in`) and ensures certificates are created (via cert-manager) or consumed from existing secrets, validated, and synchronized to the destinations defined in the `CertificateBinding` spec. Plugins drive destination integrations: Kubernetes Reflector, Azure Key Vault, and AWS ACM.
-
-## Architecture
-
-<img width="1293" height="345" alt="image" src="https://github.com/user-attachments/assets/e19657ce-339a-4240-813a-df47f2554479" />
-
-Core design goals:
-
-- Single source of truth: `CertificateBinding` CRs declare certificate lifecycle and destinations.
-- Idempotent sync: repeated reconciles are safe and use metadata labels/annotations to track reflected secrets.
-- Safe-by-default: validation prevents propagating invalid/expired certs; dry-run mode for testing.
-
-## Installation (Production)
-
-1. Ensure prerequisites:
-
-  - Kubernetes 1.24+
-  - cert-manager installed and functioning
-  - Helm 3
-
-2. Install the chart:
-
-```bash
-# from repository root
-helm install certauto ./charts/certauto -n certauto-system --create-namespace
+```text
+CertificateBinding (sanorg.in/v1)
+        |
+        v
+cert-manager Certificate  -->  TLS Secret (tls.crt / tls.key)
+                                     |
+                          validate keypair and expiry
+                                     |
+                 +-------------------+-------------------+
+                 |                   |                   |
+          Kubernetes copy       AWS ACM import     Azure Key Vault
 ```
 
-3. Verify controller pods are running:
+The reconcile loop:
+
+1. Read the `CertificateBinding`. If it is being deleted, clean up destinations
+   and then remove the finalizer.
+2. If `spec.certificate` is set, create or update a cert-manager `Certificate`
+   owned by the binding. Otherwise read `spec.sourceSecretRef`.
+3. Wait for the TLS secret. A missing secret requeues after 10 seconds.
+4. Validate the keypair and expiry before anything leaves the cluster.
+5. Sync every destination and record one status row per destination. A provider
+   identifier (ACM ARN, Key Vault certificate name) is persisted in
+   `status.destinations[].resourceID` so the next reconcile updates the existing
+   object instead of creating a duplicate.
+6. Write status with conflict retries, including a `Ready` condition and
+   `observedGeneration`.
+
+Destination plugins implement four methods: `Name`, `Sync`, `CheckExists` and
+`Delete`. Available types are `Kubernetes`, `AWSACM` and `AzureKeyVault`.
+
+## Requirements
+
+- Kubernetes 1.24 or newer
+- cert-manager installed if you use `spec.certificate`
+- Helm 3 for the chart, or `kubectl` plus `make` for a kustomize install
+- Go 1.25 to build from source
+
+## Install with Helm
 
 ```bash
-kubectl get pods -n certauto-system
-kubectl logs -n certauto-system -l app.kubernetes.io/name=certauto
+helm install certauto ./charts/certauto \
+  -n certauto-system --create-namespace \
+  --set image.repository=<your-registry>/certauto \
+  --set image.tag=<version>
 ```
 
-4. Configure cloud credentials as Kubernetes Secrets (examples):
+The chart is in `charts/certauto`. It does not create the CRD on upgrade, which
+is standard Helm behaviour; install the chart before creating bindings.
 
-- Azure: create `azure-credentials` secret referenced by `config/manager/manager.yaml` (`tenantId`, `clientId`, `clientSecret`).
-- AWS: provide IAM role for service account or secrets per your cloud best practices.
-
-Do not store long-lived cloud keys in the repo.
-
-## Configuration
-
-- CRD: `config/crd/bases/sanorg.in_certificatebindings.yaml`
-- Sample manifests: `config/samples/*.yaml`
-- Controller deployment: `config/manager/manager.yaml` (images, env vars, secretKeyRefs)
-
-Key config notes:
-
-- The controller expects TLS secrets to follow Kubernetes TLS secret format (`tls.crt`, `tls.key`).
-- Plugins accept per-destination `config` fields in `CertificateBinding.spec.destinationRules`.
-
-## Usage & Examples
-
-Apply an example binding from `config/samples`:
+To use workload identity instead of static credentials, annotate the service
+account:
 
 ```bash
-kubectl apply -f config/samples/certificatebinding_kubernetes.yaml
+helm install certauto ./charts/certauto -n certauto-system --create-namespace \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::123456789012:role/certauto
+```
+
+## Install with kustomize
+
+```bash
+make install    # CRDs
+make deploy IMG=<your-registry>/certauto:<version>
+```
+
+## Usage
+
+```yaml
+apiVersion: sanorg.in/v1
+kind: CertificateBinding
+metadata:
+  name: payments-api
+  namespace: cert-manager
+spec:
+  certificate:
+    dnsNames:
+      - payments.internal.example
+    issuerRef:
+      name: internal-ca
+      kind: ClusterIssuer
+  destinationRules:
+    - name: payments
+      type: Kubernetes
+      config:
+        targetNamespace: payments
+        targetSecretName: payments-tls
+    - name: load-balancer
+      type: AWSACM
+      config:
+        region: ap-south-1
+```
+
+```bash
+kubectl apply -f binding.yaml
 kubectl get certificatebindings -A
-kubectl describe certificatebinding <name> -n <namespace>
+kubectl describe certificatebinding payments-api -n cert-manager
 ```
 
-Typical flow:
+See `config/samples/` for Kubernetes, AWS, Azure and multi-destination examples.
 
-1. Create `CertificateBinding` CR.
-2. Controller ensures cert-manager `Certificate` created (if configured).
-3. Secret is produced by cert-manager, controller validates TLS contents.
-4. Controller syncs to destinations and updates `status.destinations`.
+### Cross-namespace opt-in
 
-## Observability & Metrics
+A binding may only write a TLS secret into another namespace when that namespace
+consents. The receiving namespace must carry:
 
-The controller exposes Prometheus metrics (configurable via flags and `config/default`). Important metrics:
+```yaml
+metadata:
+  labels:
+    certauto.sanorg.in/allow-binding-from: cert-manager
+```
 
-- `certauto_sync_total{destination,type,result}`
-- `certauto_sync_duration_seconds`
-- `certauto_certificate_expiry_seconds`
-- `certauto_validation_failed_total`
+The value is either a comma-separated list of source namespaces or `*`. Writes
+inside the binding's own namespace do not need the label. Without it, the
+destination is marked `Failed` and nothing is written.
 
-Scrape endpoint default options are defined in `config/default/metrics_service.yaml` and `config/prometheus` overlays.
+This is a workload-level guard, not a replacement for RBAC. The controller's
+ClusterRole can read secrets across the cluster because that is what reflection
+requires.
 
-## Security & Secrets
+### Sync policy
 
-- Do NOT commit secrets or private keys to git. Search for `tls.key`, `kubeconfig`, `clientSecret` before committing.
-- Use Kubernetes `Secret` resources and RBAC to grant least privilege.
-- For cloud credentials prefer Workload Identity (GCP), MSI (Azure), or IRSA (AWS) instead of static keys.
+`spec.syncPolicy` is enforced:
 
-I scanned the repository for common secret patterns and did not find plaintext private keys or cloud secrets. The controller references external secrets (e.g., `azure-credentials`) via `secretKeyRef` — these should be created in-cluster by operators/CI.
+- `maxRetries`: attempts per destination before it is marked `Failed`. Zero means
+  one attempt per reconcile.
+- `retryInterval`: Go duration between attempts, for example `30s`. Defaults to
+  `30s`.
+- `runOnce`: skip destination syncs when the binding is `Ready` and the source
+  secret content has not changed since the last successful reconcile.
+
+### Dry run
+
+`spec.dryRun: true` validates the certificate and reports what would happen. It
+does not call any destination. Destination rows are `Pending` and the `Ready`
+condition is `False` with reason `DryRun`, because nothing was actually synced.
+
+### Deletion
+
+A finalizer (`certauto.sanorg.in/finalizer`) holds the binding until every
+destination has been cleaned up. Reflected secrets are deleted, ACM certificates
+are deleted, and Key Vault certificates are deleted. If cleanup fails, the
+finalizer stays and the reconcile retries.
+
+## Observability
+
+The controller exports Prometheus metrics:
+
+| Metric | Labels |
+| --- | --- |
+| `certauto_sync_total` | `destination_type`, `status` |
+| `certauto_sync_duration_seconds` | `destination_type` |
+| `certauto_certificate_expiry_seconds` | `namespace`, `name`, `destination` |
+| `certauto_validation_failed_total` | `namespace`, `name`, `reason` |
+
+`certauto_certificate_expiry_seconds` stores the expiry as a Unix timestamp, so
+the useful alert is arithmetic:
+
+```promql
+time() - certauto_certificate_expiry_seconds < 1209600
+```
+
+That fires when a certificate has less than 14 days left.
+
+## Security
+
+- Certificate and key material is never written to status or logs.
+- The Kubernetes destination copies both `tls.crt` and `tls.key` into the target
+  namespace. This is a deliberate trade-off: the copy is the feature, and every
+  copy is also another place the key can leak from. Prefer issuing per namespace
+  or distributing only CA bundles when the workload allows it.
+- Cross-namespace writes require the receiving namespace to opt in, as described
+  above.
+- AWS and Azure plugins use the default cloud credential chain. Prefer IRSA,
+  Azure Workload Identity or managed identity over static keys. If you must use a
+  static Azure secret, put it in `azure-credentials` with `tenantId`, `clientId`
+  and `clientSecret` keys.
+- The CRD rejects unknown destination types at admission. It does not validate
+  that `targetNamespace`, `keyVaultName` or `region` match the destination type;
+  those are checked by the controller at reconcile time.
+
+## Limitations
+
+These are known and intentional for the current version:
+
+- No workload reload. Updating a secret does not restart pods or make an ingress
+  controller reload it. That is the workload's responsibility.
+- No multi-cluster distribution. One controller serves one cluster.
+- The Kubernetes plugin copies private keys. There is no `IssuePerNamespace` or
+  `CABundleOnly` mode yet.
+- No admission webhook. Validation is limited to CRD enum and minimum-length
+  rules plus reconcile-time checks.
+- The API group is `sanorg.in`. Change it before publishing a fork unless you
+  control that domain.
+- AWS ACM import is not tested against LocalStack in CI. The e2e suite covers the
+  controller lifecycle and metrics, not cloud calls.
 
 ## Development
 
-Prerequisites (local):
-
-- Go 1.20+ (or project-specified Go version)
-- `make`, `helm`, `kubectl`
-- `golangci-lint` for linting
-
-Common tasks:
-
-- Build
-
 ```bash
-make build
+make manifests generate   # CRD, RBAC and deepcopy
+make fmt vet
+make test                 # unit tests
+make lint                 # golangci-lint
+make test-e2e             # kind cluster, builds and loads the image
 ```
 
-- Run unit tests
+The unit tests cover certificate validation, the reconcile loop against a fake
+client (including cross-namespace denial, expired certificates, retries and
+`runOnce`), and the Key Vault PEM helper.
 
-```bash
-go test ./... -v
-```
+CI runs:
 
-- Lint (requires golangci-lint)
-
-```bash
-golangci-lint run
-```
-
-- Code generation (when API types change)
-
-```bash
-make generate
-```
-
-- Run the controller locally against a cluster:
-
-```bash
-# use manager image or run `go run ./cmd` with proper kubeconfig
-go run ./cmd -metrics-bind-address=:8080
-```
-
-Testing note: the repository includes e2e tests under `test/e2e`. Use an envtest cluster or KinD for CI.
-
-## CI and Releases
-
-- CI should run `go test ./...`, `golangci-lint run`, and `make generate` as part of PR validation.
-- Releases should build and publish container images, update Helm `Chart.yaml`, and publish chart artifacts.
+- `Tests`: unit tests on every push and pull request
+- `Lint`: golangci-lint
+- `E2E Tests`: kind cluster, image build and load, cert-manager install
+- `Deploy Website`: GitHub Pages for `docs/`
 
 ## Contributing
 
-We welcome fixes and improvements. Please follow these guidelines:
-
 1. Fork and create a feature branch.
-2. Write tests for new behavior and ensure all tests pass.
-3. Run linters and format code (`gofmt`).
-4. Open a PR with a clear description and reference to issues.
+2. Add tests for behaviour changes.
+3. Run `go test ./...`, `golangci-lint run` and `gofmt -s -w .`.
+4. Open a pull request with a clear description.
 
-Contributor checklist:
-
-```bash
-go test ./...
-golangci-lint run
-gofmt -s -w .
-```
-
-If you want, I can add a `CONTRIBUTING.md` with these guidelines and a PR template.
+`CONTRIBUTING.md` has the longer version.
 
 ## Troubleshooting
 
-- Check controller logs:
-
 ```bash
 kubectl logs -n certauto-system -l app.kubernetes.io/name=certauto
-```
-
-- Inspect a specific `CertificateBinding`:
-
-```bash
 kubectl describe certificatebinding <name> -n <namespace>
 ```
 
-- Common issues:
-  - Missing `tls.crt`/`tls.key` in source secret — verify cert-manager output or source secret presence.
-  - Cloud plugin authentication failures — verify secrets/roles and plugin config.
+Common causes:
+
+- Missing `tls.crt` or `tls.key` in the source secret. Check cert-manager first.
+- `target namespace has not opted in`: add the label described above.
+- Cloud authentication failures: check the service account annotations and the
+  provider's credential chain.
+- A destination stuck in `Retrying`: read the per-destination error, then check
+  the provider API status and quota.
 
 ## License
 
-Apache 2.0 — see LICENSE file.
-
----
-
-If you'd like, I will:
-
-- Create a `CONTRIBUTING.md` and PR template.
-- Add a short `docs/ARCHITECTURE.md` expanding the mermaid diagram with sequence flows.
-
-Tell me which of those you'd like next.
+Apache 2.0. See `LICENSE`.

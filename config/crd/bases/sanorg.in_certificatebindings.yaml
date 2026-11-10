@@ -118,10 +118,15 @@ spec:
                       type: object
                     name:
                       description: Name is a unique identifier for this destination.
+                      minLength: 1
                       type: string
                     type:
                       description: Type is the type of destination (AzureKeyVault,
                         AWSACM, Kubernetes).
+                      enum:
+                      - Kubernetes
+                      - AWSACM
+                      - AzureKeyVault
                       type: string
                   required:
                   - config
@@ -129,6 +134,10 @@ spec:
                   - type
                   type: object
                 type: array
+              dryRun:
+                description: DryRun if true, the controller will only simulate operations
+                  and log intentions.
+                type: boolean
               sourceSecretRef:
                 description: SourceSecretRef is used if you already have a secret
                   and don't want the controller to manage a Certificate.
@@ -147,16 +156,21 @@ spec:
                 description: SyncPolicy defines the sync policy.
                 properties:
                   maxRetries:
-                    description: MaxRetries is the maximum number of retries before
-                      giving up.
+                    description: |-
+                      MaxRetries is the maximum number of attempts for a failing destination
+                      before it is marked Failed. Zero means one attempt per reconcile.
                     format: int32
+                    minimum: 0
                     type: integer
                   retryInterval:
-                    description: RetryInterval is the interval between retries.
+                    description: |-
+                      RetryInterval is the delay between retry attempts. It accepts Go duration
+                      strings such as "30s" or "5m". Defaults to 30s.
                     type: string
                   runOnce:
-                    description: RunOnce if true, the controller will not re-sync
-                      after a successful operation until the source changes.
+                    description: |-
+                      RunOnce if true, the controller will not re-sync after a successful
+                      operation until the source secret content or the spec changes.
                     type: boolean
                 type: object
             type: object
@@ -239,6 +253,13 @@ spec:
                     name:
                       description: Name is the name of the destination.
                       type: string
+                    resourceID:
+                      description: |-
+                        ResourceID is the provider-specific identifier of the last successful sync,
+                        for example an ACM certificate ARN or a Key Vault certificate name. It is
+                        persisted so the next reconcile can update the existing object instead of
+                        creating a duplicate.
+                      type: string
                     retryCount:
                       description: RetryCount is the number of retry attempts.
                       format: int32
@@ -267,6 +288,12 @@ spec:
               ready:
                 description: Ready indicates if the certificate binding is ready.
                 type: boolean
+              sourceSecretHash:
+                description: |-
+                  SourceSecretHash is a SHA-256 digest of the source secret's tls.crt and
+                  tls.key. It lets syncPolicy.runOnce tell a real certificate change apart
+                  from an ordinary reconcile pass.
+                type: string
               syncCount:
                 description: SyncCount is the number of times the controller has synced.
                 format: int64

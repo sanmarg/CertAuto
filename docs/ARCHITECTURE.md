@@ -22,11 +22,14 @@ This document expands the high-level architecture diagram and shows the primary 
    - AzureKeyVault: imports certificate material into Key Vault.
    - AWSACM: imports certificate into AWS Certificate Manager.
 7. Controller updates `CertificateBinding.status.destinations` with sync results.
+8. On deletion, a finalizer holds the CR until every destination has been cleaned up.
 
 ## Failure handling
 
 - Validation fails: controller sets status to indicate validation failure and will not sync.
 - Plugin sync fails: controller increments retry counters and follows `syncPolicy` (maxRetries, retryInterval).
+- Provider errors are no longer treated as "not found". A failed `CheckExists` is reported
+  instead of causing a duplicate import.
 
 ## Observability
 
@@ -36,4 +39,5 @@ This document expands the high-level architecture diagram and shows the primary 
 ## Security considerations
 
 - Do not store secrets in source control. Use Kubernetes `Secret` resources and cloud-native identity providers instead of embedding keys.
+- Cross-namespace reflection requires the target namespace to carry the `certauto.sanorg.in/allow-binding-from` label.
 - Limit RBAC to least privilege for controller service account.

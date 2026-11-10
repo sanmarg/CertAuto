@@ -1,0 +1,46 @@
+CertAuto is installed in namespace {{ .Release.Namespace }}.
+
+Next steps:
+
+1. Install cert-manager if it is not already present:
+     kubectl get pods -n cert-manager
+
+2. Create a CertificateBinding:
+
+     apiVersion: sanorg.in/v1
+     kind: CertificateBinding
+     metadata:
+       name: payments-api
+       namespace: {{ .Release.Namespace }}
+     spec:
+       sourceSecretRef:
+         name: payments-tls
+         namespace: {{ .Release.Namespace }}
+       destinationRules:
+         - name: apps
+           type: Kubernetes
+           config:
+             targetNamespace: payments
+             targetSecretName: payments-tls
+
+3. Cross-namespace writes are refused unless the receiving namespace opts in.
+   Label the target namespace with the source namespace, or with "*":
+
+     kubectl label namespace payments \
+       certauto.sanorg.in/allow-binding-from={{ .Release.Namespace }}
+
+4. Check status:
+
+     kubectl get certificatebindings -A
+     kubectl describe certificatebinding payments-api -n {{ .Release.Namespace }}
+
+{{- if .Values.metrics.enabled }}
+
+Metrics are served on the {{ include "certauto.fullname" . }}-metrics service
+(port {{ .Values.metrics.service.port }}). Secure metrics require a bearer token
+and the {{ include "certauto.fullname" . }}-metrics-reader ClusterRole.
+{{- end }}
+
+AWS ACM and Azure Key Vault destinations use the default cloud credential
+chain. Prefer workload identity over static keys; set
+serviceAccount.annotations at install time for IRSA or Azure Workload Identity.

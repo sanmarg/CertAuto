@@ -1,0 +1,72 @@
+replicaCount: 1
+
+image:
+  # Override with your registry, for example ghcr.io/sanmarg/certauto.
+  repository: controller
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  # Defaults to the full release name.
+  name: ""
+  # Use this for IRSA, Azure Workload Identity, or GCP Workload Identity.
+  annotations: {}
+
+rbac:
+  create: true
+
+leaderElection:
+  enabled: true
+
+metrics:
+  enabled: true
+  # Secure metrics are served over HTTPS and protected by authentication and
+  # authorization. Set to false only for local development.
+  secure: true
+  # Port the manager binds inside the pod.
+  bindPort: 8443
+  service:
+    type: ClusterIP
+    port: 8443
+    annotations: {}
+
+cloud:
+  aws:
+    # Applied to every AWS ACM destination that does not set its own region.
+    region: ""
+  azure:
+    # Name of an existing secret with tenantId, clientId and clientSecret.
+    # Leave empty to rely on workload identity.
+    existingSecret: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

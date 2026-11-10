@@ -61,9 +61,11 @@ type DestinationConfig struct {
 // DestinationRule defines a destination where certificates should be synced.
 type DestinationRule struct {
 	// Name is a unique identifier for this destination.
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
 	// Type is the type of destination (AzureKeyVault, AWSACM, Kubernetes).
+	// +kubebuilder:validation:Enum=Kubernetes;AWSACM;AzureKeyVault
 	Type string `json:"type"`
 
 	// Config contains destination-specific configuration.
@@ -72,15 +74,19 @@ type DestinationRule struct {
 
 // SyncPolicy defines the sync policy for the certificate binding.
 type SyncPolicy struct {
-	// MaxRetries is the maximum number of retries before giving up.
+	// MaxRetries is the maximum number of attempts for a failing destination
+	// before it is marked Failed. Zero means one attempt per reconcile.
 	// +optional
+	// +kubebuilder:validation:Minimum=0
 	MaxRetries int32 `json:"maxRetries,omitempty"`
 
-	// RetryInterval is the interval between retries.
+	// RetryInterval is the delay between retry attempts. It accepts Go duration
+	// strings such as "30s" or "5m". Defaults to 30s.
 	// +optional
 	RetryInterval string `json:"retryInterval,omitempty"`
 
-	// RunOnce if true, the controller will not re-sync after a successful operation until the source changes.
+	// RunOnce if true, the controller will not re-sync after a successful
+	// operation until the source secret content or the spec changes.
 	// +optional
 	RunOnce bool `json:"runOnce,omitempty"`
 }
@@ -107,6 +113,13 @@ type DestinationStatus struct {
 	// RetryCount is the number of retry attempts.
 	// +optional
 	RetryCount int32 `json:"retryCount,omitempty"`
+
+	// ResourceID is the provider-specific identifier of the last successful sync,
+	// for example an ACM certificate ARN or a Key Vault certificate name. It is
+	// persisted so the next reconcile can update the existing object instead of
+	// creating a duplicate.
+	// +optional
+	ResourceID string `json:"resourceID,omitempty"`
 }
 
 // IssuerRef references a cert-manager Issuer or ClusterIssuer.
@@ -203,6 +216,12 @@ type CertificateBindingStatus struct {
 	// ObservedGeneration is the latest generation of the CertificateBinding that was processed.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// SourceSecretHash is a SHA-256 digest of the source secret's tls.crt and
+	// tls.key. It lets syncPolicy.runOnce tell a real certificate change apart
+	// from an ordinary reconcile pass.
+	// +optional
+	SourceSecretHash string `json:"sourceSecretHash,omitempty"`
 }
 
 // +kubebuilder:object:root=true

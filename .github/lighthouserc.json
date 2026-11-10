@@ -4,12 +4,7 @@
       "url": [
         "https://sanmarg.github.io/certauto/"
       ],
-      "numberOfRuns": 3,
-      "settings": {
-        "chromePath": "/usr/bin/google-chrome",
-        "chromeFlags": "--headless --no-sandbox",
-        "configPath": ".github/lighthouserc.json"
-      }
+      "numberOfRuns": 3
     },
     "upload": {
       "target": "temporary-public-storage"

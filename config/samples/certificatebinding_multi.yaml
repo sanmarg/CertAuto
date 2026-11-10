@@ -10,7 +10,9 @@ spec:
     namespace: cert-manager
   
   destinationRules:
-    # Kubernetes namespace reflections
+    # Kubernetes namespace reflections.
+    # Each target namespace must opt in first:
+    #   kubectl label namespace production certauto.sanorg.in/allow-binding-from=cert-manager
     - name: production-ns
       type: Kubernetes
       config:

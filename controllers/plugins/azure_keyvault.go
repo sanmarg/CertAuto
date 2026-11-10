@@ -3,9 +3,10 @@ package plugins
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
-	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azcertificates"
 	corev1 "k8s.io/api/core/v1"
@@ -25,59 +26,72 @@ func (p *AzureKeyVaultPlugin) Name() string {
 	return "AzureKeyVault"
 }
 
-// Sync syncs the certificate to Azure Key Vault.
-func (p *AzureKeyVaultPlugin) Sync(ctx context.Context, secret *corev1.Secret, destConfig certautov1.DestinationConfig) error {
+// Sync imports the certificate into Azure Key Vault and returns the
+// certificate name used in the vault, so a later reconcile updates the same
+// certificate instead of guessing a different name.
+func (p *AzureKeyVaultPlugin) Sync(
+	ctx context.Context,
+	secret *corev1.Secret,
+	destConfig certautov1.DestinationConfig,
+) (string, error) {
 	logger := log.FromContext(ctx)
 
-	// 1. Authenticate using Managed Identity
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		return fmt.Errorf("failed to authenticate: %v", err)
+	if destConfig.KeyVaultName == "" {
+		return "", fmt.Errorf("keyVaultName is required for AzureKeyVault destinations")
 	}
 
-	// 2. Create KeyVault client
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to authenticate: %v", err)
+	}
+
 	vaultURL := fmt.Sprintf("https://%s.vault.azure.net/", destConfig.KeyVaultName)
 	certClient, err := azcertificates.NewClient(vaultURL, cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create KeyVault client: %v", err)
+		return "", fmt.Errorf("failed to create KeyVault client: %v", err)
 	}
 
-	// 3. Determine certificate name
 	certName := destConfig.CertificateName
 	if certName == "" {
 		certName = generateCertName(secret)
 	}
 
-	// 4. Check if certificate exists
-	exists, err := p.CheckExists(ctx, destConfig)
+	config := destConfig
+	config.CertificateName = certName
+	exists, err := p.CheckExists(ctx, config)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// 5. Prepare certificate data (combine cert and key into PFX/PEM format)
 	certBytes := secret.Data["tls.crt"]
 	keyBytes := secret.Data["tls.key"]
+	base64Cert := base64.StdEncoding.EncodeToString(combinedPEM(certBytes, keyBytes))
 
-	// Combine cert and key for import (base64 encoded PEM)
-	combinedPEM := append(certBytes, keyBytes...)
-	base64Cert := base64.StdEncoding.EncodeToString(combinedPEM)
-
-	// 6. Import certificate
 	if exists {
 		logger.Info("Importing new certificate version", "certificate", certName)
 	} else {
 		logger.Info("Creating new certificate", "certificate", certName)
 	}
 
-	_, err = certClient.ImportCertificate(ctx, certName, azcertificates.ImportCertificateParameters{
+	if _, err := certClient.ImportCertificate(ctx, certName, azcertificates.ImportCertificateParameters{
 		Base64EncodedCertificate: &base64Cert,
-	}, nil)
+	}, nil); err != nil {
+		return "", fmt.Errorf("failed to import certificate into Key Vault: %w", err)
+	}
 
-	return err
+	return certName, nil
 }
 
-// CheckExists checks if the certificate exists in Key Vault.
-func (p *AzureKeyVaultPlugin) CheckExists(ctx context.Context, destConfig certautov1.DestinationConfig) (bool, error) {
+// CheckExists checks if the certificate exists in Key Vault. Only a 404 is
+// treated as absence; authentication and permission failures are returned.
+func (p *AzureKeyVaultPlugin) CheckExists(
+	ctx context.Context,
+	destConfig certautov1.DestinationConfig,
+) (bool, error) {
+	if destConfig.KeyVaultName == "" || destConfig.CertificateName == "" {
+		return false, nil
+	}
+
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return false, err
@@ -89,10 +103,10 @@ func (p *AzureKeyVaultPlugin) CheckExists(ctx context.Context, destConfig certau
 		return false, err
 	}
 
-	certName := destConfig.CertificateName
-	_, err = certClient.GetCertificate(ctx, certName, "", nil)
+	_, err = certClient.GetCertificate(ctx, destConfig.CertificateName, "", nil)
 	if err != nil {
-		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "CertificateNotFound") {
+		var responseError *azcore.ResponseError
+		if errors.As(err, &responseError) && responseError.StatusCode == 404 {
 			return false, nil
 		}
 		return false, err
@@ -101,7 +115,14 @@ func (p *AzureKeyVaultPlugin) CheckExists(ctx context.Context, destConfig certau
 }
 
 // Delete deletes the certificate from Key Vault.
-func (p *AzureKeyVaultPlugin) Delete(ctx context.Context, destConfig certautov1.DestinationConfig) error {
+func (p *AzureKeyVaultPlugin) Delete(
+	ctx context.Context,
+	destConfig certautov1.DestinationConfig,
+) error {
+	if destConfig.KeyVaultName == "" || destConfig.CertificateName == "" {
+		return nil
+	}
+
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		return err
@@ -113,9 +134,29 @@ func (p *AzureKeyVaultPlugin) Delete(ctx context.Context, destConfig certautov1.
 		return err
 	}
 
-	certName := destConfig.CertificateName
-	_, err = certClient.DeleteCertificate(ctx, certName, nil)
-	return err
+	_, err = certClient.DeleteCertificate(ctx, destConfig.CertificateName, nil)
+	if err != nil {
+		var responseError *azcore.ResponseError
+		if errors.As(err, &responseError) && responseError.StatusCode == 404 {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// combinedPEM concatenates a certificate and its private key without touching
+// the backing arrays of the inputs. append(certBytes, keyBytes...) looked
+// harmless but could write key material into the cached secret's spare
+// capacity.
+func combinedPEM(certBytes, keyBytes []byte) []byte {
+	combined := make([]byte, 0, len(certBytes)+len(keyBytes)+1)
+	combined = append(combined, certBytes...)
+	if len(certBytes) > 0 && certBytes[len(certBytes)-1] != '\n' {
+		combined = append(combined, '\n')
+	}
+	combined = append(combined, keyBytes...)
+	return combined
 }
 
 // generateCertName generates a certificate name from the secret metadata.

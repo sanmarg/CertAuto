@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: certauto-controller-manager
+  name: controller-manager
   namespace: certauto-system
 spec:
   replicas: 2
@@ -12,17 +12,26 @@ spec:
     metadata:
       labels:
         control-plane: controller-manager
+        app.kubernetes.io/name: certificateautorenewal
     spec:
-      serviceAccountName: certauto-controller-manager
+      serviceAccountName: controller-manager
       securityContext:
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: manager
         image: controller:latest
+        imagePullPolicy: IfNotPresent
         args:
         - "--health-probe-bind-address=:8081"
-        - "--metrics-bind-address=127.0.0.1:8080"
         - "--leader-elect"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -31,22 +40,26 @@ spec:
         # AWS Configuration
         - name: AWS_REGION
           value: "us-east-1"
-        # Azure Configuration
+        # Azure Configuration. The secret is optional so the controller can run
+        # with workload identity or no Azure destination at all.
         - name: AZURE_TENANT_ID
           valueFrom:
             secretKeyRef:
               name: azure-credentials
               key: tenantId
+              optional: true
         - name: AZURE_CLIENT_ID
           valueFrom:
             secretKeyRef:
               name: azure-credentials
               key: clientId
+              optional: true
         - name: AZURE_CLIENT_SECRET
           valueFrom:
             secretKeyRef:
               name: azure-credentials
               key: clientSecret
+              optional: true
         livenessProbe:
           httpGet:
             path: /healthz

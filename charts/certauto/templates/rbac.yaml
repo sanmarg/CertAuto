@@ -1,0 +1,193 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "certauto.fullname" . }}-manager
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - cert-manager.io
+    resources:
+      - certificates
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - sanorg.in
+    resources:
+      - certificatebindings
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - sanorg.in
+    resources:
+      - certificatebindings/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - sanorg.in
+    resources:
+      - certificatebindings/status
+    verbs:
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "certauto.fullname" . }}-manager
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "certauto.fullname" . }}-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "certauto.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "certauto.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "certauto.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "certauto.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "certauto.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.metrics.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "certauto.fullname" . }}-metrics-auth
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "certauto.fullname" . }}-metrics-auth
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "certauto.fullname" . }}-metrics-auth
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "certauto.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "certauto.fullname" . }}-metrics-reader
+  labels:
+    {{- include "certauto.labels" . | nindent 4 }}
+rules:
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+{{- end }}
+{{- end }}

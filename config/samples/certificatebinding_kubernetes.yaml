@@ -10,7 +10,10 @@ spec:
     name: wildcard-example-com-tls
     namespace: cert-manager
   
-  # Destinations: Where to sync the certificate
+  # Destinations: Where to sync the certificate.
+  # Target namespaces must opt in first:
+  #   kubectl label namespace app-frontend \
+  #     certauto.sanorg.in/allow-binding-from=cert-manager
   destinationRules:
     # Reflect to app-frontend namespace
     - name: frontend-ns

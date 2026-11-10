@@ -26,8 +26,13 @@ func (p *KubernetesReflectorPlugin) Name() string {
 	return "Kubernetes"
 }
 
-// Sync copies the TLS secret to the target namespace.
-func (p *KubernetesReflectorPlugin) Sync(ctx context.Context, sourceSecret *corev1.Secret, destConfig certautov1.DestinationConfig) error {
+// Sync copies the TLS secret to the target namespace and returns its
+// namespace/name identifier.
+func (p *KubernetesReflectorPlugin) Sync(
+	ctx context.Context,
+	sourceSecret *corev1.Secret,
+	destConfig certautov1.DestinationConfig,
+) (string, error) {
 	logger := log.FromContext(ctx)
 
 	targetNamespace := destConfig.TargetNamespace
@@ -39,16 +44,16 @@ func (p *KubernetesReflectorPlugin) Sync(ctx context.Context, sourceSecret *core
 	}
 
 	if targetNamespace == "" {
-		return fmt.Errorf("targetNamespace is required for Kubernetes reflector")
+		return "", fmt.Errorf("targetNamespace is required for Kubernetes reflector")
 	}
 
 	// Check if target namespace exists
-	ns := &corev1.Namespace{}
-	if err := p.Get(ctx, types.NamespacedName{Name: targetNamespace}, ns); err != nil {
+	namespace := &corev1.Namespace{}
+	if err := p.Get(ctx, types.NamespacedName{Name: targetNamespace}, namespace); err != nil {
 		if errors.IsNotFound(err) {
-			return fmt.Errorf("target namespace %s does not exist", targetNamespace)
+			return "", fmt.Errorf("target namespace %s does not exist", targetNamespace)
 		}
-		return fmt.Errorf("failed to check target namespace: %v", err)
+		return "", fmt.Errorf("failed to check target namespace: %v", err)
 	}
 
 	// Check if target secret already exists
@@ -63,23 +68,26 @@ func (p *KubernetesReflectorPlugin) Sync(ctx context.Context, sourceSecret *core
 		if errors.IsNotFound(err) {
 			exists = false
 		} else {
-			return fmt.Errorf("failed to check existing secret: %v", err)
+			return "", fmt.Errorf("failed to check existing secret: %v", err)
 		}
+	}
+
+	labels := map[string]string{
+		"app.kubernetes.io/managed-by":        "certauto",
+		"certauto.sanorg.in/source-name":      sourceSecret.Name,
+		"certauto.sanorg.in/source-namespace": sourceSecret.Namespace,
+	}
+	annotations := map[string]string{
+		"certauto.sanorg.in/reflected-from": fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name),
 	}
 
 	// Create or update the target secret
 	targetSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      targetSecretName,
-			Namespace: targetNamespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":           "certauto",
-				"certauto.sanorg.in/source-name":      sourceSecret.Name,
-				"certauto.sanorg.in/source-namespace": sourceSecret.Namespace,
-			},
-			Annotations: map[string]string{
-				"certauto.sanorg.in/reflected-from": fmt.Sprintf("%s/%s", sourceSecret.Namespace, sourceSecret.Name),
-			},
+			Name:        targetSecretName,
+			Namespace:   targetNamespace,
+			Labels:      labels,
+			Annotations: annotations,
 		},
 		Type: corev1.SecretTypeTLS,
 		Data: map[string][]byte{
@@ -99,20 +107,20 @@ func (p *KubernetesReflectorPlugin) Sync(ctx context.Context, sourceSecret *core
 			logger.Info("Secret data unchanged, skipping update",
 				"targetNamespace", targetNamespace,
 				"targetSecret", targetSecretName)
-			return nil
+			return secretKey.String(), nil
 		}
 
-		// Update existing secret
+		// Update existing secret, preserving unrelated labels and annotations
 		existingSecret.Data = targetSecret.Data
-		existingSecret.Labels = targetSecret.Labels
-		existingSecret.Annotations = targetSecret.Annotations
+		existingSecret.Labels = mergeStringMaps(existingSecret.Labels, targetSecret.Labels)
+		existingSecret.Annotations = mergeStringMaps(existingSecret.Annotations, targetSecret.Annotations)
 
 		logger.Info("Updating reflected secret",
 			"targetNamespace", targetNamespace,
 			"targetSecret", targetSecretName)
 
 		if err := p.Update(ctx, existingSecret); err != nil {
-			return fmt.Errorf("failed to update secret: %v", err)
+			return "", fmt.Errorf("failed to update secret: %v", err)
 		}
 	} else {
 		// Create new secret
@@ -121,15 +129,18 @@ func (p *KubernetesReflectorPlugin) Sync(ctx context.Context, sourceSecret *core
 			"targetSecret", targetSecretName)
 
 		if err := p.Create(ctx, targetSecret); err != nil {
-			return fmt.Errorf("failed to create secret: %v", err)
+			return "", fmt.Errorf("failed to create secret: %v", err)
 		}
 	}
 
-	return nil
+	return secretKey.String(), nil
 }
 
 // CheckExists checks if the secret exists in the target namespace.
-func (p *KubernetesReflectorPlugin) CheckExists(ctx context.Context, destConfig certautov1.DestinationConfig) (bool, error) {
+func (p *KubernetesReflectorPlugin) CheckExists(
+	ctx context.Context,
+	destConfig certautov1.DestinationConfig,
+) (bool, error) {
 	targetNamespace := destConfig.TargetNamespace
 	targetSecretName := destConfig.TargetSecretName
 
@@ -154,7 +165,10 @@ func (p *KubernetesReflectorPlugin) CheckExists(ctx context.Context, destConfig 
 }
 
 // DeleteSecret removes the reflected secret from the target namespace.
-func (p *KubernetesReflectorPlugin) Delete(ctx context.Context, destConfig certautov1.DestinationConfig) error {
+func (p *KubernetesReflectorPlugin) Delete(
+	ctx context.Context,
+	destConfig certautov1.DestinationConfig,
+) error {
 	logger := log.FromContext(ctx)
 
 	targetNamespace := destConfig.TargetNamespace
@@ -200,4 +214,15 @@ func secretDataEqual(a, b map[string][]byte) bool {
 		}
 	}
 	return true
+}
+
+func mergeStringMaps(base, overlay map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(overlay))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overlay {
+		merged[key] = value
+	}
+	return merged
 }
