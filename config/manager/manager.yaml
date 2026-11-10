@@ -4,7 +4,9 @@ metadata:
   name: controller-manager
   namespace: certauto-system
 spec:
-  replicas: 2
+  # One replica by default. Leader election is enabled so you can raise this
+  # without two controllers reconciling at the same time.
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
